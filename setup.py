@@ -3,7 +3,7 @@
 
 __title__ = 'baidupcsapi'
 __version__ = '0.3.6'
-__author__ = 'liyangjie,mozillazg,capric8416'
+__author__ = 'liyangjie,mozillazg,capric8416,0312birdzhang'
 __license__ = 'MIT'
 
 from setuptools import setup
@@ -25,10 +25,10 @@ setup(
     name='baidupcsapi',
     version=__version__,
     description='百度网盘API',
-    url='https://github.com/ly0/baidupcsapi',
-    download_url='https://github.com/ly0/baidupcsapi',
+    url='https://github.com/0312birdzhang/baidupcsapi',
+    download_url='https://github.com/0312birdzhang/baidupcsapi',
     author=__author__,
-    author_email='latyas@gmail.com,mozillazg101@gmail.com',
+    author_email='latyas@gmail.com,mozillazg101@gmail.com,0312birdzhang@gmail.com',
     license=__license__,
     packages=packages,
     package_data={'': ['LICENSE.txt']},
@@ -42,8 +42,7 @@ setup(
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
         'Topic :: Utilities',
     ],
     keywords='百度网盘, 百度云, API',

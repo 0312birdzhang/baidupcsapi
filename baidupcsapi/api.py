@@ -12,13 +12,13 @@ import string
 import random
 import base64
 from hashlib import sha1, md5
-from urllib import urlencode, quote
+from urllib.parse import urlencode, quote
 from zlib import crc32
 from requests_toolbelt import MultipartEncoder
 import requests
-requests.packages.urllib3.disable_warnings()
+import requests.packages.urllib3
 import rsa
-import urllib
+import urllib.request, urllib.parse, urllib.error
 
 
 """
@@ -100,7 +100,7 @@ def check_login(func):
         if type(ret) == requests.Response:
             try:
                 foo = json.loads(ret.content)
-                if foo.has_key('errno') and foo['errno'] == -6:
+                if 'errno' in foo and foo['errno'] == -6:
                     logging.debug(
                         'Offline, deleting cookies file then relogin.')
                     path = '.{0}.cookies'.format(args[0].username)
@@ -156,7 +156,7 @@ class BaseClass(object):
         """
         url = 'http://pcs.baidu.com/rest/2.0/pcs/file?app_id=250528&method=locateupload'
         ret = requests.get(url).content
-        foo = json.loads(ret)
+        foo = json.loads(ret.decode("utf-8"))
         return foo['host']
 
     def set_pcs_server(self, server):
@@ -170,7 +170,7 @@ class BaseClass(object):
         BAIDUPCS_SERVER = server
 
     def _remove_empty_items(self, data):
-        for k, v in data.copy().items():
+        for k, v in list(data.copy().items()):
             if v is None:
                 data.pop(k)
 
@@ -184,8 +184,10 @@ class BaseClass(object):
 
     def _save_cookies(self):
         cookies_file = '.{0}.cookies'.format(self.username)
-        with open(cookies_file, 'w') as f:
-            pickle.dump(
+        print(self.session.cookies)
+#         with open(cookies_file, 'w') as f:
+        f = open(cookies_file,"wb")
+        pickle.dump(
                 requests.utils.dict_from_cookiejar(self.session.cookies), f)
 
     def _load_cookies(self):
@@ -194,13 +196,13 @@ class BaseClass(object):
         if os.path.exists(cookies_file):
             logging.debug('%s cookies file has already existed.' %
                           self.username)
-            with open(cookies_file) as cookies_file:
-                cookies = requests.utils.cookiejar_from_dict(
+            cookies_file = open(cookies_file,"rb")
+            cookies = requests.utils.cookiejar_from_dict(
                     pickle.load(cookies_file))
-                logging.debug(str(cookies))
-                self.session.cookies = cookies
-                self.user['BDUSS'] = self.session.cookies['BDUSS']
-                return True
+            logging.debug(str(cookies))
+            self.session.cookies = cookies
+            self.user['BDUSS'] = self.session.cookies['BDUSS']
+            return True
         else:
             return False
 
@@ -215,15 +217,16 @@ class BaseClass(object):
     def _get_captcha(self, code_string):
         # Captcha
         if code_string:
-            verify_code = self.captcha_func("https://passport.baidu.com/cgi-bin/genimage?" + code_string)
+            verify_code = self.captcha_func(b"https://passport.baidu.com/cgi-bin/genimage?" + code_string)
         else:
             verify_code = ""
 
         return verify_code
 
     def show_captcha(self, url_verify_code):
-        print(url_verify_code)
-        verify_code = raw_input('open url aboved with your web browser, then input verify code > ')
+        #print(url_verify_code)
+        #pyotherside.send("captcha",url_verify_code)
+        verify_code = input('open url aboved with your web browser, then input verify code > ')
 
         return verify_code
 
@@ -231,7 +234,7 @@ class BaseClass(object):
         url = 'https://passport.baidu.com/v2/getpublickey?token=' + \
             self.user['token']
         content = self.session.get(url).content
-        jdata = json.loads(content.replace('\'','"'))
+        jdata = json.loads(content.replace(b'\'',b'"').decode("utf-8"))
         return (jdata['pubkey'], jdata['key'])
 
     def _login(self):
@@ -240,8 +243,8 @@ class BaseClass(object):
         captcha = ''
         code_string = ''
         pubkey, rsakey = self._get_publickey()
-        key = rsa.PublicKey.load_pkcs1_openssl_pem(pubkey)
-        password_rsaed = base64.b64encode(rsa.encrypt(self.password, key))
+        key = rsa.PublicKey.load_pkcs1_openssl_pem(pubkey.encode("utf-8"))
+        password_rsaed = base64.b64encode(rsa.encrypt(self.password.encode("utf-8"), key))
         while True:
             login_data = {'staticpage': 'http://www.baidu.com/cache/user/html/v3Jump.html',
                           'charset': 'UTF-8',
@@ -249,7 +252,7 @@ class BaseClass(object):
                           'tpl': 'pp',
                           'subpro': '',
                           'apiver': 'v3',
-                          'tt': str(int(time.time())),
+                          'tt': str(int(time.time())).encode("utf-8"),
                           'codestring': code_string,
                           'isPhone': 'false',
                           'safeflg': '0',
@@ -262,7 +265,7 @@ class BaseClass(object):
                           'password': password_rsaed,
                           'verifycode': captcha,
                           'mem_pass': 'on',
-                          'rsakey': str(rsakey),
+                          'rsakey': str(rsakey).encode("utf-8"),
                           'crypttype': 12,
                           'ppui_logintime': '50918',
                           'callback': 'parent.bd__pcbs__oa36qm'}
@@ -270,9 +273,9 @@ class BaseClass(object):
                 'https://passport.baidu.com/v2/api/?login', data=login_data)
 
             # 是否需要验证码
-            if 'err_no=257' in result.content or 'err_no=6' in result.content:
-                code_string = re.findall('codeString=(.*?)&', result.content)[0]
-                logging.debug('need captcha, codeString=' + code_string)
+            if b'err_no=257' in result.content or b'err_no=6' in result.content:
+                code_string = re.findall(b'codeString=(.*?)&', result.content)[0]
+                logging.debug(b'need captcha, codeString=' + code_string)
                 captcha = self._get_captcha(code_string)
                 continue
 
@@ -293,9 +296,9 @@ class BaseClass(object):
         self._save_cookies()
 
     def _check_account_exception(self, content):
-        err_id = re.findall('err_no=([\d]+)', content)[0]
+        err_id = re.findall(b'err_no=([\d]+)', content)[0]
 
-        if err_id == '0':
+        if err_id == b'0':
             return
         error_message = {
             '-1':'系统错误, 请稍后重试',
@@ -312,16 +315,17 @@ class BaseClass(object):
             '120021': '登录失败,请在弹出的窗口操作,或重新登录',
             '500010': '登录过于频繁,请24小时后再试',
             '400031': '账号异常，请在当前网络环境下在百度网页端正常登录一次',
-            '401007': '您的手机号关联了其他帐号，请选择登录'}
+            '401007': '您的手机号关联了其他帐号，请选择登录'
+        }
         try:
             msg = error_message[err_id]
         except:
-            msg = 'unknown err_id=' + err_id
+            msg = b'unknown err_id=' + err_id
         raise LoginFailed(msg)
 
     def _params_utf8(self, params):
-        for k, v in params.items():
-            if isinstance(v, unicode):
+        for k, v in list(params.items()):
+            if isinstance(v, str):
                 params[k] = v.encode('utf-8')
 
     @check_login
@@ -600,7 +604,7 @@ class PCS(BaseClass):
         # https://github.com/PeterDing/iScript/blob/master/pan.baidu.com.py
         url = 'http://pan.baidu.com/disk/home'
         r = self.session.get(url)
-        html = r.content
+        html = r.content.decode("utf-8")
         sign1 = re.search(r'sign1 = \'(.+?)\';', html).group(1)
         sign3 = re.search(r'sign3 = \'(.+?)\';', html).group(1)
         timestamp = re.search(r'timestamp = \'(.+?)\';', html).group(1)
@@ -611,12 +615,12 @@ class PCS(BaseClass):
             o = ''
             v = len(j)
 
-            for q in xrange(256):
+            for q in range(256):
                 a.append(ord(j[q % v]))
                 p.append(q)
 
             u = 0
-            for q in xrange(256):
+            for q in range(256):
                 u = (u + p[q] + a[q]) % 256
                 t = p[q]
                 p[q] = p[u]
@@ -624,7 +628,7 @@ class PCS(BaseClass):
 
             i = 0
             u = 0
-            for q in xrange(len(r)):
+            for q in range(len(r)):
                 i = (i + 1) % 256
                 u = (u + p[i]) % 256
                 t = p[i]
@@ -633,7 +637,7 @@ class PCS(BaseClass):
                 k = p[((p[i] + p[u]) % 256)]
                 o += chr(ord(r[q]) ^ k)
 
-            return base64.b64encode(o)
+            return base64.b64encode(o.encode(encoding='utf_8'))
 
         self.dsign = sign2(sign3, sign1)
         self.timestamp = timestamp
@@ -669,11 +673,11 @@ class PCS(BaseClass):
         if not hasattr(self, 'dsign'):
             self.get_sign()
 
-        if isinstance(remote_path, str) or isinstance(remote_path, unicode):
+        if isinstance(remote_path, str) or isinstance(remote_path, str):
             remote_path = [remote_path]
 
         file_list = []
-        jdata = json.loads(self.meta(remote_path).content)
+        jdata = json.loads(self.meta(remote_path).content.decode("utf-8"))
         if jdata['errno'] != 0:
             jdata = self.__err_handler('generic', jdata['errno'],
                                        self.meta,
@@ -692,6 +696,7 @@ class PCS(BaseClass):
 
     # Deprecated
     # using download_url to get real download url
+    @DeprecationWarning
     def download(self, remote_path, **kwargs):
         """下载单个文件。
 
@@ -745,7 +750,7 @@ class PCS(BaseClass):
             ret = self._request('file', 'streaming', url=url, extra_params=params, **kwargs)
             if not ret.ok:
                 logging.debug('get_streaming ret_status_code %s' % ret.status_code)
-                jdata = json.loads(ret.content)
+                jdata = json.loads(ret.content.decode("utf-8"))
                 if jdata['error_code'] == 31345:
                     # 再试一次
                     continue
@@ -887,7 +892,7 @@ class PCS(BaseClass):
         }
 
         url = 'http://{0}/api/filemanager'.format(BAIDUPAN_SERVER)
-        print '请求url', url
+        print(('请求url', url))
         logging.debug('rename ' + str(data) + 'URL:' + url)
         return self._request('filemanager', 'rename', url=url, data=data, extra_params=params, **kwargs)
 
@@ -1032,13 +1037,13 @@ class PCS(BaseClass):
         添加离线任务，支持所有百度网盘支持的类型
         """
         if source_url.startswith('magnet:?'):
-            print('Magnet: "%s"' % source_url)
+            print(('Magnet: "%s"' % source_url))
             return self.add_magnet_task(source_url, remote_path, selected_idx, **kwargs)
         elif source_url.endswith('.torrent'):
-            print('BitTorrent: "%s"' % source_url)
+            print(('BitTorrent: "%s"' % source_url))
             return self.add_torrent_task(source_url, remote_path, selected_idx, **kwargs)
         else:
-            print('Others: "%s"' % source_url)
+            print(('Others: "%s"' % source_url))
             data = {
                 'method': 'add_task',
                 'source_url': source_url,
@@ -1081,7 +1086,7 @@ class PCS(BaseClass):
         # 获取种子信息
         response = self._get_torrent_info(remote_path).json()
         if response.get('error_code'):
-            print(response.get('error_code'))
+            print((response.get('error_code')))
             return
         if not response['torrent_info']['file_info']:
             return
@@ -1091,7 +1096,7 @@ class PCS(BaseClass):
             if len(selected_idx) > 0:
                 selected_idx = ','.join(map(str, selected_idx))
             else:
-                selected_idx = ','.join(map(str, range(1, len(response['torrent_info']['file_info']) + 1)))
+                selected_idx = ','.join(map(str, list(range(1, len(response['torrent_info']['file_info']) + 1))))
         else:
             selected_idx = ''
 
@@ -1119,7 +1124,7 @@ class PCS(BaseClass):
     def add_magnet_task(self, magnet, remote_path, selected_idx=(), **kwargs):
         response = self._get_magnet_info(magnet).json()
         if response.get('error_code'):
-            print(response.get('error_code'))
+            print((response.get('error_code')))
             return
         if not response['magnet_info']:
             return
@@ -1129,7 +1134,7 @@ class PCS(BaseClass):
             if len(selected_idx) > 0:
                 selected_idx = ','.join(map(str, selected_idx))
             else:
-                selected_idx = ','.join(map(str, range(1, len(response['magnet_info']) + 1)))
+                selected_idx = ','.join(map(str, list(range(1, len(response['magnet_info']) + 1))))
         else:
             selected_idx = ''
 
@@ -1535,9 +1540,9 @@ class PCS(BaseClass):
 
                         "fs_id": 文件id,
 
-                        "path": "\/\u5c0f\u7c73\/mi2s\u5237recovery.rar",
+                        "path": "\/\\u5c0f\\u7c73\/mi2s\\u5237recovery.rar",
 
-                        "server_filename": "mi2s\u5237recovery.rar",
+                        "server_filename": "mi2s\\u5237recovery.rar",
 
                         "size": 8292134,
 
